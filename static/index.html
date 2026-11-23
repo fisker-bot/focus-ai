@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FocusAI — Discipline & Alarm</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    body { font-family: system-ui, -apple-system, sans-serif; background: #0f172a; color: #f8fafc; margin: 0; padding: 16px; }
+    .card { background: #1e293b; border-radius: 14px; padding: 16px; margin-bottom: 14px; border: 1px solid #334155; }
+    h1 { font-size: 20px; margin: 0 0 8px; color: #38bdf8; }
+    .clock { font-size: 36px; font-weight: 800; text-align: center; letter-spacing: 2px; margin: 10px 0; }
+    .btn { width: 100%; padding: 12px; border: none; border-radius: 10px; font-size: 16px; font-weight: 700; cursor: pointer; margin-top: 8px; }
+    .btn-primary { background: #38bdf8; color: #0f172a; }
+    .btn-danger { background: #ef4444; color: white; }
+    input { width: 100%; box-sizing: border-box; padding: 12px; border-radius: 10px; border: 1px solid #475569; background: #0f172a; color: white; font-size: 18px; text-align: center; margin-top: 8px; }
+    .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .stat-box { background: #0f172a; padding: 12px; border-radius: 10px; text-align: center; }
+    .stat-num { font-size: 22px; font-weight: 800; color: #4ade80; }
+    .hidden { display: none; }
+    .task-item { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #334155; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>⚡ FocusAI Control Center</h1>
+    <div class="clock" id="liveClock">00:00:00</div>
+    <button class="btn btn-primary" onclick="triggerAlarm()">🔔 06:00 Budilnikni sinab ko‘rish</button>
+  </div>
+
+  <div class="card hidden" id="alarmBox" style="border-color: #ef4444;">
+    <h1 style="color: #ef4444;">⏰ UYG‘ONISH VAQTI! (06:00)</h1>
+    <p>Budilnikni o‘chirish uchun misolni yeching:</p>
+    <div style="font-size: 24px; font-weight: bold; text-align: center;" id="mathProblem"></div>
+    <input type="number" id="mathAnswer" placeholder="Javobni kiriting...">
+    <button class="btn btn-danger" onclick="checkMath()">✅ Tasdiqlash va O‘chirish</button>
+    <p id="alarmMsg" style="color: #f87171; text-align: center; margin-top: 8px;"></p>
+  </div>
+
+  <div class="card">
+    <h1>📊 14 Kunlik Intizom Statistikasi</h1>
+    <div class="stat-grid">
+      <div class="stat-box">
+        <div class="stat-num" id="scoreVal">0%</div>
+        <div>Umumiy samaradorlik</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-num" id="doneVal">0</div>
+        <div>Bajarilgan bloklar</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h1>📅 Bugungi Reja (06:00 – 23:00)</h1>
+    <div id="scheduleList">Yuklanmoqda...</div>
+  </div>
+
+  <script>
+    let expectedAnswer = 0;
+    let audioCtx = null;
+    let alarmInterval = null;
+
+    function updateClock() {
+      const now = new Date();
+      document.getElementById('liveClock').innerText = now.toTimeString().split(' ')[0];
+      if (now.getHours() === 6 && now.getMinutes() === 0 && now.getSeconds() === 0) {
+        triggerAlarm();
+      }
+    }
+    setInterval(updateClock, 1000);
+
+    function playBeep() {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+      gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.35);
+    }
+
+    function triggerAlarm() {
+      const a = Math.floor(Math.random() * 8) + 12;
+      const b = Math.floor(Math.random() * 5) + 3;
+      const c = Math.floor(Math.random() * 25) + 10;
+      expectedAnswer = (a * b) + c;
+      document.getElementById('mathProblem').innerText = `${a} × ${b} + ${c} = ?`;
+      document.getElementById('alarmBox').classList.remove('hidden');
+      playBeep();
+      if (!alarmInterval) alarmInterval = setInterval(playBeep, 1000);
+    }
+
+    async function checkMath() {
+      const val = parseInt(document.getElementById('mathAnswer').value);
+      if (val === expectedAnswer) {
+        clearInterval(alarmInterval);
+        alarmInterval = null;
+        document.getElementById('alarmBox').classList.add('hidden');
+        document.getElementById('alarmMsg').innerText = "";
+        await fetch('/api/task/wake/done', { method: 'POST' });
+        loadStats();
+      } else {
+        document.getElementById('alarmMsg').innerText = "❌ Noto‘g‘ri! Qayta hisoblang.";
+      }
+    }
+
+    async function loadStats() {
+      const res = await fetch('/api/status');
+      const data = await res.json();
+      document.getElementById('scoreVal').innerText = data.report.score + "%";
+      document.getElementById('doneVal').innerText = data.report.done;
+      const list = document.getElementById('scheduleList');
+      list.innerHTML = data.schedule.map(t => 
+        `<div class="task-item"><span><b>${t.time}</b> — ${t.title}</span><span>${t.end}</span></div>`
+      ).join('');
+    }
+    loadStats();
+  </script>
+</body>
+</html>
